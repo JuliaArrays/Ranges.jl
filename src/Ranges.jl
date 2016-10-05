@@ -1,5 +1,7 @@
+__precompile__()
+
 module Ranges
 
-# package code goes here
+include("linspace.jl")
 
 end # module
