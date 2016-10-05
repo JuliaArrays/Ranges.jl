@@ -21,6 +21,8 @@ L64 = Ranges.linspace(Int64(1), Int64(4), 4)
 @test L32[3] == 3 && L64[3] == 3
 @test L32[4] == 4 && L64[4] == 4
 
+@test Ranges.range(Int64(1), Int64(1), 4) === L64
+
 test_linspace(Ranges.linspace(0.1,0.3,3))
 test_linspace(Ranges.linspace(0.0,0.3,4))
 test_linspace(Ranges.linspace(0.3,-0.1,5))
@@ -184,8 +186,10 @@ function test_linspace_identity{T}(r::Ranges.LinSpace{T}, mr::Ranges.LinSpace{T}
     @test isa(-r, Ranges.LinSpace)
 
     @test 1 + r + (-1) == r
+    @test 1 .+ r .+ (-1) == r
     @test isa(1 + r + (-1), Ranges.LinSpace)
     @test 1 - r - 1 == mr
+    @test 1 .- r .- 1 == mr
     @test isa(1 - r - 1, Ranges.LinSpace)
 
     @test 1 * r * 1 == r
@@ -248,6 +252,7 @@ r = Ranges.linspace(ba, bb, 3)
 @test r[2] == (ba+bb)/2
 
 a, b = rand(10), rand(10)
+acopy = copy(a)
 ba, bb = big(a), big(b)
 r = Ranges.linspace(a, b, 5)
 @test r[1] == a && r[5] == b
@@ -255,3 +260,19 @@ for i = 2:4
     x = ((5-i)//4)*ba + ((i-1)//4)*bb
     @test r[i] ≈ Float64.(x)
 end
+@test first(r .+ 2) == a+2
+@test first(2 .+ r) == a+2
+@test first(r) === a && a == acopy
+
+r = Ranges.linspace(3+im, 1+3im, 3)
+@test r[2] === 2.0+2.0im
+@test first(r .+ (5-3im)) === 8.0-2.0im
+@test first((5-3im) .+ r) == 8-2im
+@test first(r .- (5-3im)) == -2+4im
+@test first((5-3im) .- r) == 2-4im
+
+@test Ranges.logspace(0, 3, 4) == [1,10,100,1000]
+
+list = [Ranges.linspace(1,3,3), 0.0:0.1:0.3]
+@test eltype(list) == Ranges.LinSpace{Float64}
+@test isa(convert(Ranges.LinSpace, 0.0:0.1:0.3), Ranges.LinSpace{Float64})
