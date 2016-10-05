@@ -31,7 +31,8 @@ end
 
 linspace(start, stop, len::Real=50) = LinSpace(start, stop, Int(len))
 
-range(start, step, len) = linspace(start, fma(len-1, step, start), len)
+# range(start, step, len) = linspace(start, fma(len-1, step, start), len)
+range(start, step, len) = linspace(start, start+(len-1)*step, len)
 
 function show(io::IO, r::LinSpace)
     print(io, "Ranges.linspace(")
@@ -105,25 +106,16 @@ end
 function .+(x::Number, r::LinSpace)
     LinSpace(x + r.start, x + r.stop, r.len)
 end
-function .+{T}(x::Ref{T}, r::LinSpace{T})
-    LinSpace(x + r.start, x + r.stop, r.len)
-end
 function .-(x::Real, r::LinSpace)
     LinSpace(x - r.start, x - r.stop, r.len)
 end
 function .-(x::Number, r::LinSpace)
     LinSpace(x - r.start, x - r.stop, r.len)
 end
-function .-{T}(x::Ref{T}, r::LinSpace{T})
-    LinSpace(x - r.start, x - r.stop, r.len)
-end
 function .-(r::LinSpace, x::Real)
     LinSpace(r.start - x, r.stop - x, r.len)
 end
 function .-(r::LinSpace, x::Number)
-    LinSpace(r.start - x, r.stop - x, r.len)
-end
-function .-{T}(r::LinSpace{T}, x::Ref{T})
     LinSpace(r.start - x, r.stop - x, r.len)
 end
 
