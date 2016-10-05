@@ -253,5 +253,5 @@ r = Ranges.linspace(a, b, 5)
 @test r[1] == a && r[5] == b
 for i = 2:4
     x = ((5-i)//4)*ba + ((i-1)//4)*bb
-    @test r[i] == Float64.(x)
+    @test r[i] ≈ Float64.(x)
 end
