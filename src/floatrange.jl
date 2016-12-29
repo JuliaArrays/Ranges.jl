@@ -1,4 +1,5 @@
 using Core.Intrinsics: box, unbox
+using Base: tail
 
 typealias RoundingFloat Union{Float64, Float32, Float16}
 
@@ -62,9 +63,8 @@ function linspace{T<:RoundingFloat}(start::T, stop::T, len::Integer)
         ref_lo, step_lo = zero(T), stop
     else
         # Double-double calculations to get high precision endpoint matching
-        step_x, step_exp = frexp(step)
         nb = ceil(UInt, log2(len))  # number of trailing zeros needed for exact multiplication
-        step_hi = ldexp(truncbits(step_x, nb), step_exp)
+        step_hi = truncbits(step, nb)
         x1_hi, x1_lo = add2((1-imin)*step_hi, ref)
         x2_hi, x2_lo = add2((len-imin)*step_hi, ref)
         a, b = (start - x1_hi) - x1_lo, (stop - x2_hi) - x2_lo
@@ -80,15 +80,19 @@ function _linspace{T}(::Type{T}, start_n::Integer, stop_n::Integer, den::Integer
     tmin = -start_n/(Float64(stop_n) - Float64(start_n))
     imin = round(Int, tmin*(len-1)+1)
     imin = clamp(imin, 1, Int(len))
-    # TODO: replace BigFloat with double-double precision calculations
-    refb = BigFloat((len-imin)*start_n + (imin-1)*stop_n)/(den*(len-1))
-    ref_hi = T(refb)
-    ref_lo = T(refb - ref_hi)
-    step = T((stop_n - start_n)/((len-1)*den))
-    step_x, step_exp = frexp(step)
-    nb = ceil(UInt, log2(len))  # number of trailing zeros needed for exact multiplication
-    step_hi = ldexp(truncbits(T(step_x), nb), step_exp)
-    step_lo = T(BigFloat(stop_n - start_n)/((len-1)*den) - step_hi)
+    # These compute (1-t)*a and t*b separately (itp = interpolant)...
+    start_itp_hi, start_itp_lo = proddiv(T, (len-imin, start_n), (den, len-1))
+    stop_itp_hi, stop_itp_lo = proddiv(T, (imin-1, stop_n), (den, len-1))
+    # ...and then combine them to make ref
+    ref_hi, ref_lo = add2(start_itp_hi, stop_itp_hi)
+    ref_hi, ref_lo = add2(ref_hi, ref_lo + (start_itp_lo + stop_itp_lo))
+    # This computes step to double-double precision...
+    step_hi_pre, step_lo = proddiv(T, (stop_n-start_n,), (len-1, den))
+    # ...and then truncates enough low-bits of step_hi to ensure that
+    # multiplication by 1:len is exact
+    nb = ceil(UInt, log2(len))
+    step_hi = truncbits(step_hi_pre, nb)
+    step_lo += step_hi_pre - step_hi
     FloatRange(ref_hi, ref_lo, step_hi, step_lo, imin, Int(len))
 end
 
@@ -174,6 +178,19 @@ end
 
 ./(r::FloatRange, x::Real)     = linspace(first(r) / x, last(r) / x, length(r))
 
+promote_rule{S,T}(::Type{FloatRange{S}}, ::Type{FloatRange{T}}) =
+    FloatRange{promote_type(S,T)}
+promote_rule{S,T}(::Type{FloatRange{S}}, ::Type{Base.FloatRange{T}}) =
+    FloatRange{promote_type(S,T)}
+promote_rule{S,O<:OrdinalRange}(::Type{FloatRange{S}}, ::Type{O}) =
+    FloatRange{promote_type(S,eltype(O))}
+
+convert{T}(::Type{FloatRange{T}}, r::Range) = linspace(T(first(r)), T(last(r)), length(r))
+convert(::Type{FloatRange}, r::Range) = convert(FloatRange{eltype(r)}, r)
+
+
+### Numeric utilities
+
 function rat(x)
     y = x
     a = d = 1
@@ -199,7 +216,7 @@ narrow(::Type{Float16}) = Float16
 truncbits(x::Float16, nb) = box(Float16, unbox(UInt16, _truncbits(box(UInt16, unbox(Float16, x)), nb)))
 truncbits(x::Float32, nb) = box(Float32, unbox(UInt32, _truncbits(box(UInt32, unbox(Float32, x)), nb)))
 truncbits(x::Float64, nb) = box(Float64, unbox(UInt64, _truncbits(box(UInt64, unbox(Float64, x)), nb)))
-function _truncbits{U<:Unsigned}(xi::U, nb::Unsigned)
+function _truncbits{U<:Unsigned}(xi::U, nb::Integer)
     mask = typemax(U)
     xi & (mask << nb)
 end
@@ -212,12 +229,26 @@ function add2{T}(u::T, v::T)
     w, (u-w) + v
 end
 
-promote_rule{S,T}(::Type{FloatRange{S}}, ::Type{FloatRange{T}}) =
-    FloatRange{promote_type(S,T)}
-promote_rule{S,T}(::Type{FloatRange{S}}, ::Type{Base.FloatRange{T}}) =
-    FloatRange{promote_type(S,T)}
-promote_rule{S,O<:OrdinalRange}(::Type{FloatRange{S}}, ::Type{O}) =
-    FloatRange{promote_type(S,eltype(O))}
+function mul2(u_hi, u_lo, v::Integer)
+    v == 0 && return zero(u_hi), zero(u_lo)
+    nb = ceil(Int, log2(abs(v)))
+    ut = truncbits(u_hi, nb)
+    add2(ut*v, ((u_hi-ut) + u_lo)*v)
+end
 
-convert{T}(::Type{FloatRange{T}}, r::Range) = linspace(T(first(r)), T(last(r)), length(r))
-convert(::Type{FloatRange}, r::Range) = convert(FloatRange{eltype(r)}, r)
+function div2(u_hi, u_lo, v::Integer)
+    hi = u_hi/v
+    w_hi, w_lo = mul2(hi, zero(hi), v)
+    lo = (((u_hi - w_hi) - w_lo) + u_lo)/v
+    add2(hi, lo)
+end
+
+@inline function proddiv(T, num, den)
+    v_hi = T(num[1])
+    v_hi, v_lo = _prod(v_hi, zero(T), tail(num)...)
+    _div(v_hi, v_lo, den...)
+end
+@inline _prod(v_hi, v_lo, x, y...) = _prod(mul2(v_hi, v_lo, x)..., y...)
+_prod(v_hi, v_lo) = v_hi, v_lo
+@inline _div(v_hi, v_lo, x, y...) = _div(div2(v_hi, v_lo, x)..., y...)
+_div(v_hi, v_lo) = v_hi, v_lo
