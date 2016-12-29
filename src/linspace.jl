@@ -1,13 +1,6 @@
 # Standalone https://github.com/JuliaLang/julia/pull/18777 for use
 # with earlier versions of Julia
 
-import Base: first, last, start, next, done, step, convert, promote_rule,
-             show, size, isempty, length, minimum, maximum,
-             ctranspose, transpose, copy, getindex, intersect, findin, vcat,
-             reverse, issorted, sort, sort!, sortperm, sum, mean, median,
-             in, map, float, big
-import Base: ==, -, +, .+, .-, .*, ./
-
 immutable LinSpace{T} <: Range{T}
     start::T
     stop::T
@@ -34,7 +27,7 @@ linspace(start, stop, len::Real=50) = LinSpace(start, stop, Int(len))
 # range(start, step, len) = linspace(start, fma(len-1, step, start), len)
 range(start, step, len) = linspace(start, start+(len-1)*step, len)
 
-function show(io::IO, r::LinSpace)
+function show(io::IO, r::Union{FloatRange,LinSpace})
     print(io, "Ranges.linspace(")
     show(io, first(r))
     print(io, ',')
@@ -166,7 +159,7 @@ function lerpi(j::Integer, d::Integer, a::Rational, b::Rational)
     ((d-j)*a)/d + (j*b)/d
 end
 
-function show(io::IO, ::MIME"text/plain", r::LinSpace)
+function show(io::IO, ::MIME"text/plain", r::Union{FloatRange,LinSpace})
     # show for linspace, e.g.
     # linspace(1,3,7)
     # 7-element LinSpace{Float64}:
