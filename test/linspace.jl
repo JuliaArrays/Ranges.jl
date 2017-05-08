@@ -1,5 +1,7 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
+const oldversion = VERSION < v"0.6.0-dev.2390"
+
 # Test whether r[i] has full precision
 function test_linspace{T<:AbstractFloat}(r::Ranges.LinSpace{T})
     isempty(r) && return nothing
@@ -139,7 +141,11 @@ r = Ranges.linspace(0.25,0.25,1)
 # Issue #11245
 let io = IOBuffer()
     show(io, Ranges.linspace(1, 2, 3))
-    str = takebuf_string(io)
+    @static if VERSION < v"0.6-"
+        str = takebuf_string(io)
+    else
+        str = String(take!(io))
+    end
     @test str == "Ranges.linspace(1.0,2.0,3)"
 end
 
@@ -185,6 +191,8 @@ function test_linspace_identity{T}(r::Ranges.LinSpace{T}, mr::Ranges.LinSpace{T}
     @test -collect(r) == collect(mr)
     @test isa(-r, Ranges.LinSpace)
 
+    oldversion || return
+
     @test 1 + r + (-1) == r
     @test 1 .+ r .+ (-1) == r
     @test isa(1 + r + (-1), Ranges.LinSpace)
@@ -222,8 +230,10 @@ test_linspace_identity(Ranges.linspace(1f0, 1f0, 1), Ranges.linspace(-1f0, -1f0,
 for _r in (1:2:100, 1:100, 1f0:2f0:100f0, 1.0:2.0:100.0,
            Ranges.linspace(1, 100, 10), Ranges.linspace(1f0, 100f0, 10))
     float_r = float(_r)
-    big_r = big(_r)
-    @test typeof(big_r).name === typeof(_r).name
+    big_r = @static oldversion ? big(_r) : big.(_r)
+    @static if oldversion
+        @test typeof(big_r).name === typeof(_r).name
+    end
     if eltype(_r) <: AbstractFloat
         @test isa(float_r, typeof(_r))
         @test eltype(big_r) === BigFloat
@@ -253,7 +263,11 @@ r = Ranges.linspace(ba, bb, 3)
 
 a, b = rand(10), rand(10)
 acopy = copy(a)
-ba, bb = big(a), big(b)
+@static if oldversion
+    ba, bb = big(a), big(b)
+else
+    ba, bb = big.(a), big.(b)
+end    
 r = Ranges.linspace(a, b, 5)
 @test r[1] == a && r[5] == b
 for i = 2:4
@@ -273,6 +287,8 @@ r = Ranges.linspace(3+im, 1+3im, 3)
 
 @test Ranges.logspace(0, 3, 4) == [1,10,100,1000]
 
-list = [Ranges.linspace(1,3,3), 0.0:0.1:0.3]
-@test eltype(list) == Ranges.LinSpace{Float64}
-@test isa(convert(Ranges.LinSpace, 0.0:0.1:0.3), Ranges.LinSpace{Float64})
+if oldversion
+    list = [Ranges.linspace(1,3,3), 0.0:0.1:0.3]
+    @test eltype(list) == Ranges.LinSpace{Float64}
+    @test isa(convert(Ranges.LinSpace, 0.0:0.1:0.3), Ranges.LinSpace{Float64})
+end
