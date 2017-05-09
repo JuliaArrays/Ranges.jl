@@ -4,11 +4,7 @@
 
 [![codecov.io](http://codecov.io/github/JuliaArrays/Ranges.jl/coverage.svg?branch=master)](http://codecov.io/github/JuliaArrays/Ranges.jl?branch=master)
 
-This package exists to support new or modified forms of Ranges for the
-Julia programming language. The prototypical example of a Range is the
-`UnitRange`, constructed as `r = 1:5`. Rather than creating an array
-with storage for the 5 elements, this is represented as a compact
-object (storing just the beginning and ending points).
+This package exists to support more general Ranges for Julia 0.5. This package is not necessary on later Julia versions due to https://github.com/JuliaLang/julia/pull/18777.
 
 ## LinSpace
 
@@ -28,3 +24,5 @@ indexes `i = 1, 2, ..., n` (for which `t = (i-1)/(n-1)`).
 The interface is the same as for all other Ranges. Aside from indexing
 and iteration, the main functions are `Ranges.linspace` (to construct
 the object) and `step` (to extract the step between adjacent values).
+
+Note that the LinSpace type is not equivalent to the version of LinSpace present in Julia 0.6.
