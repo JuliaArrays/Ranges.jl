@@ -6,23 +6,39 @@ import Base: first, last, start, next, done, step, convert, promote_rule,
              ctranspose, transpose, copy, getindex, intersect, findin, vcat,
              reverse, issorted, sort, sort!, sortperm, sum, mean, median,
              in, map, float, big
-import Base: ==, -, +, .+, .-, .*, ./
 
+@static if VERSION < v"0.6.0-dev.1614"
+    import Base: ==, -, +, .+, .-, .*, ./
+else
+    import Base: ==, -, +, *, /, broadcast
+end
+
+@static if VERSION < v"0.6.0-dev.2618"
+    const typclause = ""
+    const whereclause = ""
+else
+    const typclause = "{T}"
+    const whereclause = "where T"
+end
+
+include_string(
+"""
 immutable LinSpace{T} <: Range{T}
     start::T
     stop::T
     len::Int
     lendiv::Int
 
-    function LinSpace(start,stop,len)
-        len >= 0 || error("linspace($start, $stop, $len): negative length")
+    function LinSpace$(typclause)(start,stop,len) $(whereclause)
+        len >= 0 || error("linspace(\$start, \$stop, \$len): negative length")
         if len == 1
-            start == stop || error("linspace($start, $stop, $len): endpoints differ")
+            start == stop || error("linspace(\$start, \$stop, \$len): endpoints differ")
             return new(start, stop, 1, 1)
         end
         new(start,stop,len,max(len-1,1))
     end
 end
+""")
 
 function LinSpace(start, stop, len::Integer)
     T = typeof((stop-start)/len)
@@ -100,29 +116,41 @@ end
 
 -(r::LinSpace) = LinSpace(-r.start, -r.stop, r.len)
 
-function .+(x::Real, r::LinSpace)
-    LinSpace(x + r.start, x + r.stop, r.len)
-end
-function .+(x::Number, r::LinSpace)
-    LinSpace(x + r.start, x + r.stop, r.len)
-end
-function .-(x::Real, r::LinSpace)
-    LinSpace(x - r.start, x - r.stop, r.len)
-end
-function .-(x::Number, r::LinSpace)
-    LinSpace(x - r.start, x - r.stop, r.len)
-end
-function .-(r::LinSpace, x::Real)
-    LinSpace(r.start - x, r.stop - x, r.len)
-end
-function .-(r::LinSpace, x::Number)
-    LinSpace(r.start - x, r.stop - x, r.len)
-end
+@static if VERSION < v"0.6.0-dev.1614"
+    function .+(x::Real, r::LinSpace)
+        LinSpace(x + r.start, x + r.stop, r.len)
+    end
+    function .+(x::Number, r::LinSpace)
+        LinSpace(x + r.start, x + r.stop, r.len)
+    end
+    function .-(x::Real, r::LinSpace)
+        LinSpace(x - r.start, x - r.stop, r.len)
+    end
+    function .-(x::Number, r::LinSpace)
+        LinSpace(x - r.start, x - r.stop, r.len)
+    end
+    function .-(r::LinSpace, x::Real)
+        LinSpace(r.start - x, r.stop - x, r.len)
+    end
+    function .-(r::LinSpace, x::Number)
+        LinSpace(r.start - x, r.stop - x, r.len)
+    end
 
-.*(x::Real, r::LinSpace)     = LinSpace(x * r.start, x * r.stop, r.len)
-.*(r::LinSpace, x::Real)     = x .* r
+    .*(x::Real, r::LinSpace)     = LinSpace(x * r.start, x * r.stop, r.len)
+    .*(r::LinSpace, x::Real)     = x .* r
 
-./(r::LinSpace, x::Real)     = LinSpace(r.start / x, r.stop / x, r.len)
+    ./(r::LinSpace, x::Real)     = LinSpace(r.start / x, r.stop / x, r.len)
+else
+    broadcast(::typeof(+), x::Real, r::LinSpace) =   LinSpace(x + r.start, x + r.stop, r.len)
+    broadcast(::typeof(+), x::Number, r::LinSpace) = LinSpace(x + r.start, x + r.stop, r.len)
+    broadcast(::typeof(-), x::Real, r::LinSpace) =   LinSpace(x - r.start, x - r.stop, r.len)
+    broadcast(::typeof(-), x::Number, r::LinSpace) = LinSpace(x - r.start, x - r.stop, r.len)
+    broadcast(::typeof(-), r::LinSpace, x::Real) =   LinSpace(r.start - x, r.stop - x, r.len)
+    broadcast(::typeof(-), r::LinSpace, x::Number) = LinSpace(r.start - x, r.stop - x, r.len)
+    broadcast(::typeof(*), x::Real, r::LinSpace) =   LinSpace(x * r.start, x * r.stop, r.len)
+    broadcast(::typeof(*), r::LinSpace, x::Real) =   x .* r
+    broadcast(::typeof(/), r::LinSpace, x::Real) =   LinSpace(r.start / x, r.stop / x, r.len)
+end
 
 promote_rule{T1,T2}(::Type{LinSpace{T1}},::Type{LinSpace{T2}}) =
     LinSpace{promote_type(T1,T2)}
@@ -138,12 +166,24 @@ convert{T}(::Type{LinSpace}, r::OrdinalRange{T}) =
     convert(LinSpace{typeof(float(first(r)))}, r)
 
 # Promote FloatRange to LinSpace
-promote_rule{F,OR<:FloatRange}(::Type{LinSpace{F}}, ::Type{OR}) =
-    LinSpace{promote_type(F,eltype(OR))}
-convert{T<:AbstractFloat}(::Type{LinSpace{T}}, r::FloatRange) =
-    linspace(convert(T, first(r)), convert(T, last(r)), length(r))
-convert{T<:AbstractFloat}(::Type{LinSpace}, r::FloatRange{T}) =
-    convert(LinSpace{T}, r)
+@static if VERSION < v"0.6.0-dev.2376"
+    promote_rule{F,OR<:FloatRange}(::Type{LinSpace{F}}, ::Type{OR}) =
+        LinSpace{promote_type(F,eltype(OR))}
+    convert{T<:AbstractFloat}(::Type{LinSpace{T}}, r::FloatRange) =
+        linspace(convert(T, first(r)), convert(T, last(r)), length(r))
+    convert{T<:AbstractFloat}(::Type{LinSpace}, r::FloatRange{T}) =
+        convert(LinSpace{T}, r)
+else
+    include_string(
+"""
+    promote_rule{F,OR<:StepRangeLen{<:AbstractFloat}}(::Type{LinSpace{F}}, ::Type{OR}) =
+        LinSpace{promote_type(F,eltype(OR))}
+    convert(::Type{LinSpace{T}}, r::StepRangeLen{<:AbstractFloat}) where {T<:AbstractFloat} =
+        linspace(convert(T, first(r)), convert(T, last(r)), length(r))
+    convert(::Type{LinSpace}, r::StepRangeLen{T}) where {T<:AbstractFloat} =
+        convert(LinSpace{T}, r)
+""")
+end
 
 reverse(r::LinSpace)     = LinSpace(r.stop, r.start, length(r))
 
